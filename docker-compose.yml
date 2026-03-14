@@ -1,0 +1,98 @@
+version: '3.9'
+
+services:
+  # ── Redis ────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: gateway-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    command: redis-server --save 60 1 --loglevel warning
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Mock downstream services ─────────────────────────────────────────────────
+  mock-services:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    container_name: gateway-mock-services
+    restart: unless-stopped
+    ports:
+      - '3001:3001'
+      - '3002:3002'
+    environment:
+      NODE_ENV: development
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3001/api/users']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ── API Gateway ───────────────────────────────────────────────────────────────
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-key-change-in-production}
+      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:-super-secret-admin-key-change-in-production}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      SERVICE_A_URL: http://mock-services:3001
+      SERVICE_B_URL: http://mock-services:3002
+      RL_IP_WINDOW_MS: 60000
+      RL_IP_MAX_REQUESTS: 60
+      RL_USER_WINDOW_MS: 60000
+      RL_USER_MAX_REQUESTS: 300
+      RL_APIKEY_WINDOW_MS: 60000
+      RL_APIKEY_MAX_REQUESTS: 600
+      CB_FAILURE_THRESHOLD: 5
+      CB_SUCCESS_THRESHOLD: 2
+      CB_TIMEOUT_MS: 30000
+      LOG_LEVEL: info
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3003
+    depends_on:
+      redis:
+        condition: service_healthy
+      mock-services:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/health']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ── React Dashboard (dev server via Vite) ─────────────────────────────────────
+  dashboard:
+    image: node:20-alpine
+    container_name: gateway-dashboard
+    working_dir: /app
+    volumes:
+      - ./dashboard:/app
+      - /app/node_modules
+    ports:
+      - '5173:5173'
+    environment:
+      VITE_API_URL: http://localhost:3000
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      - gateway
+
+volumes:
+  redis-data:
+    driver: local

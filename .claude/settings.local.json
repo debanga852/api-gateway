@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"/c/Users/DEBANGA DEKA/api-gateway\" && npm install 2>&1 | tail -5)",
+      "Bash(cd \"/c/Users/DEBANGA DEKA/api-gateway\" && npx tsc --noEmit 2>&1)",
+      "Bash(cd \"/c/Users/DEBANGA DEKA/api-gateway\" && cp .env.example .env && npm run build 2>&1)"
+    ]
+  }
+}

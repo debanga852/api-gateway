@@ -1,0 +1,13 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY mock-services/package*.json ./
+RUN npm ci --ignore-scripts
+
+COPY mock-services/ ./
+COPY tsconfig.json ./
+
+EXPOSE 3001 3002
+
+CMD ["node", "-e", "require('ts-node').register(); require('./index.ts');"]
